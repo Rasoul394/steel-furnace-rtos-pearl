@@ -1,0 +1,65 @@
+MODULE (Steel_Furnace_Control);
+SYSTEM;
+    /* Analog input for reading the furnace temperature*/
+    FURNACE_TEMP:  ANAIN * 1;   
+
+    /* Digital output to open/close the cooling water valve*/
+    COOLING_VALVE: DIGOUT * 2;  
+
+    /* Digital output for the factory alarm horn*/
+    ALARM_HORN:    DIGOUT * 3;  
+
+    /*Hardware interrupt from the red emergency stop button*/
+    EMERGENCY_BTN: INTERRUPT * 4; 
+
+PROBLEM;
+    /* Specify data types for the hardware connections*/
+    SPC FURNACE_TEMP DATION IN BASIC FIXED;
+    SPC COOLING_VALVE DATION OUT BASIC FIXED;
+    SPC ALARM_HORN DATION OUT BASIC FIXED;
+    SPC EMERGENCY_BTN INTERRUPT;
+
+    /* Define temperature limits (in Celsius)*/
+    DCL Temp_Limit FIXED INIT (1200);    /* Warning threshold*/
+    DCL Temp_Critical FIXED INIT (1400); /* Critical threshold (explosion risk)*/
+
+    /* TASK 1: Emergency Response (Highest Priority = 1)*/
+    Emergency_Task: TASK PRIO 1;
+        SEND 1 TO ALARM_HORN;     /* Turn on the alarm*/
+        SEND 1 TO COOLING_VALVE;  /* Open the cooling valve completely*/
+        /* In a real scenario, the gas supply would also be shut off here*/
+    END;
+
+    /*TASK 2: Temperature Monitoring (Normal Priority = 5)*/
+    
+    Monitor_Task: TASK PRIO 5;
+        DCL current_temp FIXED;
+
+        */ Read the current temperature from the sensor*/
+        TAKE current_temp FROM FURNACE_TEMP;
+
+        /* Check for critical conditions*/
+        IF current_temp > Temp_Critical THEN
+            ACTIVATE Emergency_Task; /*Trigger the emergency task via software*/
+        FIN;
+
+        /*Standard temperature control*/
+        IF current_temp > Temp_Limit THEN
+            SEND 1 TO COOLING_VALVE; /* Too hot: open the cooling valve*/
+        ELSE
+            SEND 0 TO COOLING_VALVE; /* Normal: close the valve*/
+        FIN;
+    END;
+
+    /*MAIN TASK: System Startup and Scheduling*/
+    Main: TASK MAIN;
+        /* Time-driven scheduling: */
+        /*Run the monitoring task every 2 seconds automatically*/
+        ACTIVATE Monitor_Task ALL 2 SEC;
+
+        /* Event-driven scheduling:*/
+        /* If the hardware emergency button is pressed, run the emergency task immediately*/
+        WHEN EMERGENCY_BTN ACTIVATE Emergency_Task;
+    END;
+
+MODEND;
